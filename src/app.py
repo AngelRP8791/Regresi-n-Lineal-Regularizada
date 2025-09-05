@@ -1,74 +1,105 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.datasets import fetch_california_housing
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+
+data = fetch_california_housing()
+df = pd.DataFrame(data.data, columns=data.feature_names)
+df.head()
+
+df['houseval'] = data.target
+
+X = df.drop(columns=['houseval'])
+y = df['houseval']
+
+X_train, X_test, y_train, y_test = train_test_split(X,y, test_size=0.2, random_state=123)
+
+# Lasso
 from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import ElasticNet
-from sklearn.model_selection import KFold
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+robot_Lasso = Lasso()
+parameters = {'alpha': [1, 0.1, 0.01, ],
+              'max_iter': [10, 20, 30, 40, 50, 60],
+              "tol": [0.1, 0.01, 0.001, 0.0001, 1e-05, 1e-06, 1e-07],
+              "selection": ["random"]}
+clf_Lasso = GridSearchCV(robot_Lasso, parameters,
+                   cv = 5,
+                   scoring='neg_mean_squared_error')
+clf_Lasso.fit(X_train,y_train)
 
-def scaler(X_train_, X_test_, X):
-  X_train = X_train_.copy()
-  X_test = X_test_.copy()
-  scaler = StandardScaler()
-  # Train
-  X_train_scaled = pd.DataFrame(
-             scaler.fit_transform(X_train[X]),
-             columns=scaler.get_feature_names_out(),
-             index = X_train.index)
-  X_train_scaled = X_train_scaled.join(X_train[list(set(X_train.columns)  - set(X))])
-  # Test
-  X_test_scaled = pd.DataFrame(
-      scaler.transform(X_test[X]),
-      columns = scaler.get_feature_names_out(),
-      index = X_test.index)
-  X_test_scaled = X_test_scaled.join(X_test[list(set(X_test.columns)  - set(X))])
-  X_test_scaled = X_test_scaled[X_train_scaled.columns]
-  return X_train_scaled, X_test_scaled
+# Ridge
+from sklearn.model_selection import GridSearchCV
+robot_Ridge = Ridge()
+parameters = {'alpha': [0.1, 0.001, 0.0001, 1e-05, 1e-06, 1e-07, 1e-08, 1e-09],
+              'max_iter': [1, 5, 10, 20],
+              "tol": [0.1, 0.05, 0.01, 0.005, 0.001, 0.0001,
+                      1e-05, 1e-06, 1e-07, 1e-08, 1e-09],
+              "solver": ["auto", "svd", "cholesky", 
+                         "lsqr", "sparse_cg", "sag", "saga"]}
+clf_Ridge = GridSearchCV(robot_Ridge, parameters,
+                   cv = 5,
+                   scoring='neg_mean_squared_error')
+clf_Ridge.fit(X_train,y_train)
 
-def Elastic_gridcv(X_train, y_train):
-    model =  ElasticNet(random_state=42)
-    hyperparams = {"alpha" :  [0.0001, 0.01, 1, 10],
-                   "l1_ratio" :  np.linspace(0,1,35),
-                   "max_iter": [5, 10, 50, 100, 150],
-                   "selection": ['cyclic', 'random'],
-                   "tol": [1e-3, 1e-5, 1e-7, 1e-10],}
-    cv = KFold(n_splits=5, shuffle=True, random_state=42) # replicables...
-    grid_search = GridSearchCV(estimator=model,
-                               param_grid=hyperparams,
-                               cv=cv,
-                               scoring= 'neg_mean_absolute_error',)
-    grid_result = grid_search.fit(X_train, y_train)
-    return grid_search.best_estimator_
+y_pred_Lasso = clf_Lasso.predict(X_test)
 
-url = 'https://raw.githubusercontent.com/4GeeksAcademy/regularized-linear-regression-project-tutorial/main/demographic_health_data.csv'
-df = pd.read_csv(url)
-df.head(5)
+y_pred_Ridge = clf_Ridge.predict(X_test)
 
-df.isnull().value_counts()
+results_df_Lasso = pd.DataFrame(clf_Lasso.cv_results_)
+# Show mean and std of the negative MSE for each alpha
+print(results_df_Lasso[['param_alpha', 'mean_test_score', 'std_test_score']])
 
-df.drop(columns = ['COUNTY_NAME', 'STATE_NAME'], inplace=True)
+results_df_Ridge = pd.DataFrame(clf_Ridge.cv_results_)
+# Show mean and std of the negative MSE for each alpha
+print(results_df_Ridge[['param_alpha', 'mean_test_score', 'std_test_score']])
 
-df.head(5)
+clf_Lasso.best_estimator_
 
-for var in df.columns:
-  print(var)
+clf_Ridge.best_estimator_
 
-df[['anycondition_prevalence','COPD_prevalence','% Two or more races','% Hawaiian/PI-alone','% Asian-alone','% NA/AI-alone','% Black-alone','% White-alone','80+ y/o % of total pop','diabetes_prevalence', 'Heart disease_prevalence']].corr()
+mean_squared_error(y_test, y_pred_Lasso)
 
-X = df[['anycondition_prevalence','COPD_prevalence','% Asian-alone','% Black-alone','% White-alone','Heart disease_prevalence']]
-y = df['diabetes_prevalence']
+mean_squared_error(y_test, y_pred_Ridge)
 
-nums = ['anycondition_prevalence','COPD_prevalence','% Asian-alone','% Black-alone','% White-alone','Heart disease_prevalence']
+# Escalamos los datos
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
 
-X_train, X_test, y_train, y_test = train_test_split(X,y, test_size=0.25, random_state=123)
-X_train_ml, X_test_ml = scaler(X_train, X_test, nums)
+# Lasso
+robot_Lasso = Lasso()
+parameters = {'alpha': [0.1, 0.05, 0.01, 0.001, 0.0001],
+              'max_iter': [4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000],
+              "tol": [0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00001],
+              "selection": ["random", "cyclic"]}
+clf_Lasso = GridSearchCV(robot_Lasso, parameters,
+                   cv = 5,
+                   scoring='neg_mean_squared_error')
+clf_Lasso.fit(X_train,y_train)
 
-mde=Elastic_gridcv(X_train_ml, y_train)
-preds = mde.predict(X_test_ml)
-mean_squared_error(y_test, preds)
+# Ridge
+robot_Ridge = Ridge()
+parameters = {'alpha': [4, 3, 2, 1.5, 1, 0.1, 0.01, 0.001, 0.0001],
+              'max_iter': [2, 5, 10, 20],
+              "tol": [0.1, 0.05, 0.01, 0.005, 0.001, 0.0001,
+                      1e-05, 1e-06, 1e-07, 1e-08, 1e-09, 1e-10],
+              "solver": ["auto", "svd", "cholesky", 
+                         "lsqr", "sparse_cg", "sag", "saga"]}
+clf_Ridge = GridSearchCV(robot_Ridge, parameters,
+                   cv = 5,
+                   scoring='neg_mean_squared_error')
+clf_Ridge.fit(X_train,y_train)
 
-mde
+y_pred_Ridge = clf_Ridge.predict(X_test)
 
-print(mean_absolute_error(y_test, preds))
+y_pred_Lasso = clf_Lasso.predict(X_test)
+
+mean_squared_error(y_test, y_pred_Lasso)
+
+mean_squared_error(y_test, y_pred_Ridge)
+
+clf_Lasso.best_estimator_
+
+clf_Ridge.best_estimator_
